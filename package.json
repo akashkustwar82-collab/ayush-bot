@@ -9,7 +9,7 @@
     "bots": "^0.0.7",
     "config": "^4.0.0",
     "express": "^4.21.2",
-    "fca-priyansh": "^18.0.0",
+    "fca-devil": "^18.0.0",
     "fs-extra": "^11.3.0",
     "mkdir": "^0.0.2",
     "state": "^0.2.0"
