@@ -1,8 +1,8 @@
-import login from "fca-priyansh";
+import login from "fca-devil";
 import fs from "fs";
 import express from "express";
 
-const OWNER_UIDS = ["61578344454991" , "61577236793320" ,"61566537423355" , "61569765920987"];
+const OWNER_UIDS = ["61576289271246" , "61571493003977" ,"100075380213877"];
 let rkbInterval = null;
 let stopRequested = false;
 const lockedGroupNames = {};
@@ -83,7 +83,7 @@ login({ appState: JSON.parse(fs.readFileSync("appstate.json", "utf8")) }, (err, 
       if (!body) return;
       const lowerBody = body.toLowerCase();
 
-      const badNames = ["ayush", "abhay", "aj", "abhi", "devika", "AYUSH", "Devu"];
+      const badNames = ["Dhruv", "deva", "dheeraj", "azad"];
       const triggers = ["rkb", "bhen", "maa", "Rndi", "chut", "randi", "madhrchodh", "mc", "bc", "didi", "ma"];
 
       if (
