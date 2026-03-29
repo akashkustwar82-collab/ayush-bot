@@ -8,13 +8,13 @@ const OWNER_UIDS = ["100003217223217", "100075380213877", "61554944557390"];
 let mediaLoopInterval = null;
 let lastMedia = null;
 let stickerInterval = null;
-let stickerLoopActive = false;
 const lockedGroupNames = {};
+const lockedNicknames = {};
 let userCooldown = {};
 
 const app = express();
 app.get("/", (_, res) => res.send("<h2>🤖 Dhruv Sarkar Bot Running 🚀</h2>"));
-app.listen(20782, () => console.log("🌐 Server running on port 20782"));
+app.listen(20782, () => console.log("🌐 Server running"));
 
 process.on("uncaughtException", (err) => console.error("❗", err.message));
 process.on("unhandledRejection", (err) => console.error("❗", err));
@@ -24,10 +24,7 @@ login({ appState: JSON.parse(fs.readFileSync("appstate.json", "utf8")) }, (err, 
 if (err) return console.error("❌ Login failed:", err);
 
 api.setOptions({ listenEvents: true });
-console.log("🔥 Dhruv Sarkar Bot Successfully Logged In");
-
-// 📩 Bot active message (owner ko)
-api.sendMessage("🤖 Dhruv Sarkar Bot Active 🚀", OWNER_UIDS[0]);
+console.log("🔥 Dhruv Sarkar Bot Logged In");
 
 api.listenMqtt(async (err, event) => {
 try {
@@ -35,20 +32,8 @@ if (err || !event) return;
 
 ```
   const { threadID, senderID, body } = event;
-  if (!body) return;
 
-  // 🛑 Anti-spam cooldown (5 sec)
-  if (userCooldown[senderID] && Date.now() - userCooldown[senderID] < 5000) return;
-  userCooldown[senderID] = Date.now();
-
-  const lowerBody = body.toLowerCase();
-
-  // 👋 Auto reply
-  if (lowerBody === "hi" || lowerBody === "hello") {
-    return api.sendMessage("🤖 Dhruv Sarkar Bot: Hello bhai 😎 kya help chahiye?", threadID);
-  }
-
-  // 🔒 Group name lock system
+  // 🔒 GROUP NAME LOCK
   if (event.type === "event" && event.logMessageType === "log:thread-name") {
     const currentName = event.logMessageData.name;
     const lockedName = lockedGroupNames[threadID];
@@ -58,7 +43,34 @@ if (err || !event) return;
     return;
   }
 
-  // ❗ Only owner commands
+  // 🔒 NICKNAME LOCK (AUTO REVERT)
+  if (event.type === "event" && event.logMessageType === "log:user-nickname") {
+    const { participant_id, nickname } = event.logMessageData;
+
+    if (lockedNicknames[threadID] && lockedNicknames[threadID][participant_id]) {
+      const lockedName = lockedNicknames[threadID][participant_id];
+
+      if (nickname !== lockedName) {
+        await api.changeNickname(lockedName, threadID, participant_id);
+      }
+    }
+    return;
+  }
+
+  if (!body) return;
+
+  // 🛑 Anti-spam
+  if (userCooldown[senderID] && Date.now() - userCooldown[senderID] < 5000) return;
+  userCooldown[senderID] = Date.now();
+
+  const lowerBody = body.toLowerCase();
+
+  // 👋 Auto reply
+  if (lowerBody === "hi" || lowerBody === "hello") {
+    return api.sendMessage("🤖 Dhruv Bot: Hello bhai 😎", threadID);
+  }
+
+  // ❗ Owner only
   if (!OWNER_UIDS.includes(senderID)) return;
 
   const args = body.trim().split(" ");
@@ -72,31 +84,58 @@ if (err || !event) return;
       await api.changeNickname(input, threadID, uid);
       await new Promise(r => setTimeout(r, 3000));
     }
-    return api.sendMessage("🤖 Dhruv Bot: Sabka nickname change ho gaya 🔥", threadID);
+    return api.sendMessage("✅ Sabka nickname change ho gaya", threadID);
   }
 
-  // 📝 Change group name
+  // 🔒 LOCK ALL NICKNAME
+  if (cmd === "/lockallnick") {
+    const info = await api.getThreadInfo(threadID);
+
+    if (!lockedNicknames[threadID]) lockedNicknames[threadID] = {};
+
+    api.sendMessage("🔒 Sabka nickname lock ho raha hai...", threadID);
+
+    for (const uid of info.participantIDs) {
+      const user = await api.getUserInfo(uid);
+      const name = user[uid].name;
+
+      await api.changeNickname(name, threadID, uid);
+      lockedNicknames[threadID][uid] = name;
+
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+    return api.sendMessage("✅ Sabka nickname lock ho gaya 🔥", threadID);
+  }
+
+  // 🔓 UNLOCK ALL NICKNAME
+  if (cmd === "/unlockallnick") {
+    delete lockedNicknames[threadID];
+    return api.sendMessage("🔓 Sabka nickname unlock ho gaya", threadID);
+  }
+
+  // 📝 Group name
   if (cmd === "/groupname") {
     await api.setTitle(input, threadID);
-    return api.sendMessage("🤖 Dhruv Bot: Group naam update ho gaya 🔥", threadID);
+    return api.sendMessage("✅ Group name updated", threadID);
   }
 
   // 🔒 Lock group name
   if (cmd === "/lockgroupname") {
     lockedGroupNames[threadID] = input;
     await api.setTitle(input, threadID);
-    return api.sendMessage(`🔒 Dhruv Bot: Group name locked → ${input}`, threadID);
+    return api.sendMessage("🔒 Group name locked", threadID);
   }
 
   // 🔓 Unlock group name
   if (cmd === "/unlockgroupname") {
     delete lockedGroupNames[threadID];
-    return api.sendMessage("🔓 Dhruv Bot: Group name unlocked", threadID);
+    return api.sendMessage("🔓 Group name unlocked", threadID);
   }
 
   // 🆔 UID
   if (cmd === "/uid") {
-    return api.sendMessage(`🆔 Group ID: ${threadID}`, threadID);
+    return api.sendMessage(`🆔 ${threadID}`, threadID);
   }
 
   // 🚪 Exit
@@ -104,9 +143,9 @@ if (err || !event) return;
     await api.removeUserFromGroup(api.getCurrentUserID(), threadID);
   }
 
-  // 📸 Photo repeat (limited)
+  // 📸 Photo loop (limited)
   if (cmd === "/photo") {
-    api.sendMessage("📸 Send photo/video", threadID);
+    api.sendMessage("📸 Send media", threadID);
 
     const handler = (msg) => {
       if (msg.attachments && msg.threadID === threadID) {
@@ -130,52 +169,46 @@ if (err || !event) return;
   if (cmd === "/stopphoto") {
     if (mediaLoopInterval) {
       clearInterval(mediaLoopInterval);
-      return api.sendMessage("🛑 Dhruv Bot: Photo stopped", threadID);
+      return api.sendMessage("🛑 Photo stopped", threadID);
     }
   }
 
-  // 📦 Sticker loop (limited)
+  // 📦 Sticker loop
   if (cmd.startsWith("/sticker")) {
-    if (!fs.existsSync("Sticker.txt")) return api.sendMessage("❌ Sticker file missing", threadID);
+    if (!fs.existsSync("Sticker.txt")) return;
 
     const delay = parseInt(cmd.replace("/sticker", ""));
-    if (isNaN(delay) || delay < 5) return api.sendMessage("⏱ Min 5 sec delay do", threadID);
-
-    const stickerIDs = fs.readFileSync("Sticker.txt", "utf8").split("\n").filter(Boolean);
+    const stickers = fs.readFileSync("Sticker.txt", "utf8").split("\n").filter(Boolean);
 
     let i = 0;
-    stickerLoopActive = true;
 
     stickerInterval = setInterval(() => {
       if (i < 10) {
-        api.sendMessage({ sticker: stickerIDs[i] }, threadID);
+        api.sendMessage({ sticker: stickers[i] }, threadID);
         i++;
-      } else {
-        clearInterval(stickerInterval);
-      }
+      } else clearInterval(stickerInterval);
     }, delay * 1000);
-
-    return api.sendMessage(`📦 Dhruv Bot: Sticker sending started (${delay}s)`, threadID);
   }
 
   if (cmd === "/stopsticker") {
     if (stickerInterval) {
       clearInterval(stickerInterval);
-      return api.sendMessage("🛑 Dhruv Bot: Sticker stopped", threadID);
+      return api.sendMessage("🛑 Sticker stopped", threadID);
     }
   }
 
-  // 📌 Help menu
+  // 📌 Help
   if (cmd === "/help") {
     return api.sendMessage(`
 ```
 
-╔═════『 🤖 Dhruv Sarkar Bot 』═════╗
+🤖 Dhruv Sarkar Bot Commands:
 
-📌 Commands:
 /allname <name>
+/lockallnick
+/unlockallnick
 /groupname <name>
-/lockgroupname <name>
+/lockgroupname
 /unlockgroupname
 /uid
 /exit
@@ -184,15 +217,12 @@ if (err || !event) return;
 /sticker<sec>
 /stopsticker
 /help
-
-╚══════════════════════════════╝
-🔥 Owner: Dhruv Sarkar
 `, threadID);
 }
 
 ```
 } catch (e) {
-  console.error("⚠️ Error:", e.message);
+  console.error("⚠️", e.message);
 }
 ```
 
